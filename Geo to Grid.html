@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PRS92 PTM Grid & Location Mapper</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; background: #f1f5f9; }
+        header { background: #1e293b; color: white; padding: 1rem 2rem; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); }
+        #wrapper { display: flex; flex: 1; overflow: hidden; }
+        
+        #sidebar { width: 400px; background: white; padding: 25px; box-shadow: 2px 0 15px rgba(0,0,0,0.05); z-index: 1000; overflow-y: auto; }
+        #map { flex: 1; }
+
+        .input-card { background: #fff; border-radius: 8px; margin-bottom: 20px; }
+        .group { margin-bottom: 15px; }
+        label { display: block; font-weight: 600; margin-bottom: 6px; color: #475569; font-size: 0.85rem; }
+        input { width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box; font-size: 1rem; }
+        
+        button { width: 100%; padding: 14px; background: #2563eb; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; transition: background 0.2s; font-size: 1rem; }
+        button:hover { background: #1d4ed8; }
+
+        #results { margin-top: 25px; display: none; }
+        .res-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; border-left: 5px solid #2563eb; margin-bottom: 10px; }
+        .row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.95rem; }
+        .label { color: #64748b; }
+        .val { color: #0f172a; font-weight: 700; font-family: 'Courier New', monospace; }
+        
+        .loc-header { color: #1e293b; font-weight: bold; margin-bottom: 5px; display: block; border-bottom: 1px solid #cbd5e1; padding-bottom: 5px; }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1 style="margin:0; font-size: 1.25rem;">PRS92 Cartographic Grid Converter</h1>
+</header>
+
+<div id="wrapper">
+    <div id="sidebar">
+        <div class="input-card">
+            <div class="group">
+                <label>Latitude (e.g. 14.5995)</label>
+                <input type="number" id="lat" step="any" placeholder="Decimal Degrees">
+            </div>
+            <div class="group">
+                <label>Longitude (e.g. 120.9842)</label>
+                <input type="number" id="lon" step="any" placeholder="Decimal Degrees">
+            </div>
+            <button onclick="computeAndLocate()">Convert & Locate</button>
+        </div>
+
+        <div id="results">
+            <div class="res-box">
+                <span class="loc-header">GRID COMPUTATION (PTM)</span>
+                <div class="row"><span class="label">PTM Zone:</span> <span id="out-zone" class="val">-</span></div>
+                <div class="row"><span class="label">Easting (X):</span> <span id="out-e" class="val">-</span></div>
+                <div class="row"><span class="label">Northing (Y):</span> <span id="out-n" class="val">-</span></div>
+            </div>
+
+            <div class="res-box" id="location-box">
+                <span class="loc-header">GEOGRAPHIC LOCATION</span>
+                <div class="row"><span class="label">Barangay:</span> <span id="out-brgy" class="val">Searching...</span></div>
+                <div class="row"><span class="label">Municipality:</span> <span id="out-muni" class="val">Searching...</span></div>
+                <div class="row"><span class="label">Province:</span> <span id="out-prov" class="val">Searching...</span></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="map"></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+    const map = L.map('map').setView([12.8797, 121.7740], 6);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+    let marker = null;
+
+    async function computeAndLocate() {
+        const lat = parseFloat(document.getElementById('lat').value);
+        const lon = parseFloat(document.getElementById('lon').value);
+
+        if (isNaN(lat) || isNaN(lon)) return alert("Please enter valid coordinates.");
+
+        // 1. PRS92 PTM COMPUTATION
+        const a = 6378206.4; 
+        const b = 6356583.8;
+        const e2 = (a*a - b*b) / (a*a);
+        const k0 = 0.99995; 
+        const FE = 500000;
+
+        let zone, cm;
+        if (lon >= 116 && lon < 118) { zone = 1; cm = 117; }
+        else if (lon >= 118 && lon < 120) { zone = 2; cm = 119; }
+        else if (lon >= 120 && lon < 122) { zone = 3; cm = 121; }
+        else if (lon >= 122 && lon < 124) { zone = 4; cm = 123; }
+        else if (lon >= 124 && lon <= 126) { zone = 5; cm = 125; }
+        else { alert("Outside Philippine PTM Zones."); return; }
+
+        const latRad = lat * Math.PI / 180;
+        const dLon = (lon - cm) * Math.PI / 180;
+        const N = a / Math.sqrt(1 - e2 * Math.pow(Math.sin(latRad), 2));
+        const T = Math.pow(Math.tan(latRad), 2);
+        const C = (e2 / (1 - e2)) * Math.pow(Math.cos(latRad), 2);
+        const A = dLon * Math.cos(latRad);
+        const M = a * ((1 - e2/4 - 3*e2*e2/64) * latRad - (3*e2/8 + 3*e2*e2/32) * Math.sin(2*latRad) + (15*e2*e2/256) * Math.sin(4*latRad));
+
+        const Easting = FE + k0 * N * (A + (1 - T + C) * Math.pow(A, 3) / 6 + (5 - 18 * T + T * T) * Math.pow(A, 5) / 120);
+        const Northing = k0 * (M + N * Math.tan(latRad) * (Math.pow(A, 2) / 2 + (5 - T + 9 * C) * Math.pow(A, 4) / 24));
+
+        document.getElementById('out-zone').innerText = zone;
+        document.getElementById('out-e').innerText = Easting.toFixed(3) + " m";
+        document.getElementById('out-n').innerText = Northing.toFixed(3) + " m";
+        document.getElementById('results').style.display = 'block';
+
+        // 2. REVERSE GEOCODING (NOMINATIM)
+        try {
+            const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`);
+            const data = await response.json();
+            const addr = data.address;
+            document.getElementById('out-brgy').innerText = addr.quarter || addr.suburb || addr.neighbourhood || "N/A";
+            document.getElementById('out-muni').innerText = addr.city || addr.town || addr.municipality || "N/A";
+            document.getElementById('out-prov').innerText = addr.province || addr.state || "N/A";
+        } catch (e) { console.error("Geocoding failed."); }
+
+        // 3. MAP UPDATE
+        if (marker) map.removeLayer(marker);
+        marker = L.marker([lat, lon]).addTo(map).bindPopup(`<b>PTM Zone ${zone}</b><br>X: ${Easting.toFixed(2)}<br>Y: ${Northing.toFixed(2)}`).openPopup();
+        map.flyTo([lat, lon], 15);
+    }
+</script>
+</body>
+</html>
