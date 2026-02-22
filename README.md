@@ -97,7 +97,7 @@
         else if (lon >= 118 && lon < 120) { zone = 2; cm = 119; }
         else if (lon >= 120 && lon < 122) { zone = 3; cm = 121; }
         else if (lon >= 122 && lon < 124) { zone = 4; cm = 123; }
-        else if (lon >= 124 && lon <= 126) { zone = 5; cm = 125; }
+        else if (lon >= 124 && lon <= 126) { zone = 5; cm = 127; }
         else { alert("Outside Philippine PTM Zones."); return; }
 
         const latRad = lat * Math.PI / 180;
